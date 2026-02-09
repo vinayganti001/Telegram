@@ -57,6 +57,8 @@ dependencies {
     implementation "androidx.credentials:credentials-play-services-auth:1.6.0-alpha04"
 
 //    implementation 'com.google.mlkit:translate:17.0.3'
+    implementation 'com.google.firebase:firebase-pnv:16.0.0-beta01'
+
 
     constraints {
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0") {
@@ -100,7 +102,7 @@ android {
 
 
     defaultConfig {
-        minSdkVersion 21
+        minSdkVersion 23
         targetSdkVersion 35
 
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
@@ -109,8 +111,8 @@ android {
 
         externalNativeBuild {
             cmake {
-                version '3.10.2'
-                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+                version '3.14.0'
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-23' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
     }
