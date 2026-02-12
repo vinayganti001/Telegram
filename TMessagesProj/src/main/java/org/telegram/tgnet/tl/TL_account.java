@@ -4121,7 +4121,39 @@ public class TL_account {
         }
     }
 
-    public static class inputPasskeyCredentialPublicKey extends TLObject {
+    public static abstract class InputPasskeyCredential extends TLObject {
+        public static InputPasskeyCredential TLdeserialize(InputSerializedData stream, int constructor, boolean exception) {
+            InputPasskeyCredential result = null;
+            switch (constructor) {
+                case inputPasskeyCredentialPublicKey.constructor:
+                    result = new inputPasskeyCredentialPublicKey();
+                    break;
+                case inputPasskeyCredentialFirebasePNV.constructor:
+                    result = new inputPasskeyCredentialFirebasePNV();
+                    break;
+            }
+            return TLdeserialize(InputPasskeyCredential.class, result, stream, constructor, exception);
+        }
+    }
+
+    public static class inputPasskeyCredentialFirebasePNV extends InputPasskeyCredential {
+        public static final int constructor = 0x34f68b32;
+
+        public String pnv_token;
+
+        @Override
+        public void readParams(InputSerializedData stream, boolean exception) {
+            pnv_token = stream.readString(exception);
+        }
+
+        @Override
+        public void serializeToStream(OutputSerializedData stream) {
+            stream.writeInt32(constructor);
+            stream.writeString(pnv_token);
+        }
+    }
+
+    public static class inputPasskeyCredentialPublicKey extends InputPasskeyCredential {
         public static final int constructor = 0x3c27b78f;
 
         public String id;
@@ -4236,7 +4268,7 @@ public class TL_account {
         public int flags;
         public int from_dc_id;
         public long from_auth_key_id;
-        public inputPasskeyCredentialPublicKey credential;
+        public InputPasskeyCredential credential;
 
         @Override
         public TLRPC.auth_Authorization deserializeResponseT(InputSerializedData stream, int constructor, boolean exception) {

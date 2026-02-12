@@ -24,8 +24,10 @@ import androidx.credentials.exceptions.CreateCredentialNoCreateOptionException;
 import androidx.credentials.exceptions.GetCredentialCancellationException;
 import androidx.credentials.exceptions.GetCredentialException;
 import androidx.credentials.exceptions.GetCredentialInterruptedException;
+import android.app.Activity;
 import androidx.credentials.exceptions.NoCredentialException;
 
+import com.google.firebase.pnv.VerifiedPhoneNumberTokenResult;
 import org.json.JSONObject;
 import org.json.JSONStringer;
 import org.telegram.messenger.browser.Browser;
@@ -35,6 +37,11 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.LaunchActivity;
+
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.pnv.FirebasePhoneNumberVerification;
+import com.google.firebase.pnv.VerificationSupportResult;
+// import com.google.firebase.pnv.PhoneNumberVerificationResult;
 
 import java.util.Arrays;
 import java.util.concurrent.Executors;
@@ -175,10 +182,17 @@ public class PasskeysController {
         req.api_hash = BuildVars.APP_HASH;
         final int requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
             if (cancelled[0]) return;
+            if (res.options == null) {
+                FileLog.d("PasskeysController: options is null");
+                done.run(0L, null, "EMPTY");
+                return;
+            }
             if (err != null) {
+                FileLog.e("PasskeysController: initPasskeyLogin error: " + err.text);
                 done.run(0L, null, err.text);
                 return;
             }
+            FileLog.d("PasskeysController: initPasskeyLogin success, starting CredentialManager");
 
             final String requestJson;
             try {
@@ -203,19 +217,20 @@ public class PasskeysController {
                     @Override
                     public void onResult(GetCredentialResponse res2) {
                         final Credential credential = res2.getCredential();
+                        FileLog.d("PasskeysController: CredentialManager success");
 
                         final int datacenterId;
                         final long userId;
-
                         final TL_account.finishPasskeyLogin req2 = new TL_account.finishPasskeyLogin();
-                        req2.credential = new TL_account.inputPasskeyCredentialPublicKey();
 
                         try {
                             final String responseJson = credential.getData().getString("androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON");
                             final JSONObject json = new JSONObject(responseJson);
 
-                            req2.credential.id = json.getString("id");
-                            req2.credential.raw_id = json.getString("rawId");
+                            req2.credential = new TL_account.inputPasskeyCredentialPublicKey();
+                            TL_account.inputPasskeyCredentialPublicKey pubKeyCred = (TL_account.inputPasskeyCredentialPublicKey) req2.credential;
+                            pubKeyCred.id = json.getString("id");
+                            pubKeyCred.raw_id = json.getString("rawId");
 
                             final JSONObject response = json.getJSONObject("response");
                             final TL_account.inputPasskeyResponseLogin passkeyResponse = new TL_account.inputPasskeyResponseLogin();
@@ -229,7 +244,7 @@ public class PasskeysController {
                             datacenterId = Integer.parseInt(passkeyResponse.user_handle.split(":")[0]);
                             userId = Long.parseLong(passkeyResponse.user_handle.split(":")[1]);
 
-                            req2.credential.response = passkeyResponse;
+                            pubKeyCred.response = passkeyResponse;
 
                         } catch (Exception e) {
                             FileLog.e(e);
@@ -268,14 +283,101 @@ public class PasskeysController {
 
                     @Override
                     public void onError(@NonNull GetCredentialException err2) {
-                        if (err2 instanceof NoCredentialException) {
-                            done.run(0L, null, "EMPTY");
-                        } else if (err2 instanceof GetCredentialCancellationException) {
-                            done.run(0L, null, "CANCELLED");
-                        } else if (err2 instanceof GetCredentialInterruptedException) {
-                            done.run(0L, null, "CANCELLED");
-                        } else if (err2 != null) {
-                            done.run(0L, null, err2.getMessage());
+                        try {
+                            final JSONObject obj = new JSONObject(res.options.data);
+                            final JSONObject publicKeyObj = obj.getJSONObject("publicKey");
+                            final String challenge = publicKeyObj.getString("challenge");
+
+                            if (!PushListenerController.GooglePushListenerServiceProvider.INSTANCE.hasServices()) {
+                                if (err2 instanceof NoCredentialException) {
+                                    done.run(0L, null, "EMPTY");
+                                } else if (err2 instanceof GetCredentialCancellationException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 instanceof GetCredentialInterruptedException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 != null) {
+                                    done.run(0L, null, err2.getMessage());
+                                }
+                                return;
+                            }
+
+                            if (!(context instanceof Activity)) {
+                                if (err2 instanceof NoCredentialException) {
+                                    done.run(0L, null, "EMPTY");
+                                } else if (err2 instanceof GetCredentialCancellationException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 instanceof GetCredentialInterruptedException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 != null) {
+                                    done.run(0L, null, err2.getMessage());
+                                }
+                                return;
+                            }
+
+                            FileLog.d("PasskeysController: FPNV flow started");
+                            FileLog.d("PasskeysController: FPNV flow started");
+                            FirebasePhoneNumberVerification fpnv = FirebasePhoneNumberVerification.getInstance((Activity) context);
+                            Task<VerifiedPhoneNumberTokenResult> task = fpnv.getVerifiedPhoneNumber();
+
+                            task.addOnSuccessListener(result -> {
+                                if (cancelled[0]) return;
+                                try {
+                                    String token = result.getToken();
+                                    FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
+                                    FileLog.d("PasskeysController: FPNV success, token: " + token);
+
+                                final TL_account.finishPasskeyLogin req2 = new TL_account.finishPasskeyLogin();
+                                req2.credential = new TL_account.inputPasskeyCredentialFirebasePNV();
+                                ((TL_account.inputPasskeyCredentialFirebasePNV) req2.credential).pnv_token = token;
+
+                                final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
+                                progressDialog.showDelayed(500);
+
+                                final int requestId2 = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req2, AndroidUtilities::runOnUIThread, (auth, err3) -> {
+                                    progressDialog.dismiss();
+                                    if (err3 != null) {
+                                        done.run(0L, null, err3.text);
+                                    } else {
+                                        if (auth instanceof TLRPC.TL_auth_authorization) {
+                                            done.run(((TLRPC.TL_auth_authorization) auth).user.id, auth, null);
+                                        } else {
+                                            done.run(0L, auth, null);
+                                        }
+                                    }
+                                }, ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagInvokeAfter);
+
+                                progressDialog.setOnCancelListener(d -> {
+                                    ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId2, true);
+                                    done.run(0L, null, "CANCELLED");
+                                });
+                                } catch (Exception e) {
+                                    FileLog.e(e);
+                                    if (!cancelled[0]) done.run(0L, null, e.getMessage());
+                                }
+                            }).addOnFailureListener(e -> {
+                                if (cancelled[0]) return;
+                                FileLog.e("PasskeysController: FPNV failed", e);
+                                if (err2 instanceof NoCredentialException) {
+                                    done.run(0L, null, "EMPTY");
+                                } else if (err2 instanceof GetCredentialCancellationException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 instanceof GetCredentialInterruptedException) {
+                                    done.run(0L, null, "CANCELLED");
+                                } else if (err2 != null) {
+                                    done.run(0L, null, err2.getMessage());
+                                }
+                            });
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                            if (err2 instanceof NoCredentialException) {
+                                done.run(0L, null, "EMPTY");
+                            } else if (err2 instanceof GetCredentialCancellationException) {
+                                done.run(0L, null, "CANCELLED");
+                            } else if (err2 instanceof GetCredentialInterruptedException) {
+                                done.run(0L, null, "CANCELLED");
+                            } else if (err2 != null) {
+                                done.run(0L, null, err2.getMessage());
+                            }
                         }
                     }
                 });
