@@ -41,7 +41,6 @@ import org.telegram.ui.LaunchActivity;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.pnv.FirebasePhoneNumberVerification;
 import com.google.firebase.pnv.VerificationSupportResult;
-// import com.google.firebase.pnv.PhoneNumberVerificationResult;
 
 import java.util.Arrays;
 import java.util.concurrent.Executors;
@@ -217,16 +216,19 @@ public class PasskeysController {
                     @Override
                     public void onResult(GetCredentialResponse res2) {
                         final Credential credential = res2.getCredential();
-                        FileLog.d("PasskeysController: CredentialManager success");
+                        FileLog.d("PasskeysController: onResult: CredentialManager success with credential type: " + credential.getClass().getName());
 
                         final int datacenterId;
                         final long userId;
                         final TL_account.finishPasskeyLogin req2 = new TL_account.finishPasskeyLogin();
 
+
                         try {
+                            FileLog.d("PasskeysController: Parsing credential data...");
                             final String responseJson = credential.getData().getString("androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE_JSON");
                             final JSONObject json = new JSONObject(responseJson);
 
+                            FileLog.d("PasskeysController: Constructing inputPasskeyCredentialPublicKey...");
                             req2.credential = new TL_account.inputPasskeyCredentialPublicKey();
                             TL_account.inputPasskeyCredentialPublicKey pubKeyCred = (TL_account.inputPasskeyCredentialPublicKey) req2.credential;
                             pubKeyCred.id = json.getString("id");
@@ -283,6 +285,7 @@ public class PasskeysController {
 
                     @Override
                     public void onError(@NonNull GetCredentialException err2) {
+                        FileLog.e("PasskeysController: CredentialManager onError: " + err2.getClass().getName() + " - " + err2.getMessage());
                         try {
                             final JSONObject obj = new JSONObject(res.options.data);
                             final JSONObject publicKeyObj = obj.getJSONObject("publicKey");
@@ -314,8 +317,7 @@ public class PasskeysController {
                                 return;
                             }
 
-                            FileLog.d("PasskeysController: FPNV flow started");
-                            FileLog.d("PasskeysController: FPNV flow started");
+                            FileLog.d("PasskeysController: Initiating FPNV fallback...");
                             FirebasePhoneNumberVerification fpnv = FirebasePhoneNumberVerification.getInstance((Activity) context);
                             Task<VerifiedPhoneNumberTokenResult> task = fpnv.getVerifiedPhoneNumber();
 
