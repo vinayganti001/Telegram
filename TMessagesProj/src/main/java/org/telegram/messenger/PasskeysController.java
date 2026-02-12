@@ -62,6 +62,8 @@ import kotlinx.coroutines.JobCancellationException;
 @RequiresApi(api = 28)
 public class PasskeysController {
 
+    private static final boolean ENABLE_FPNV_FALLBACK = true;
+
     public static void create(Context context, int currentAccount, Utilities.Callback2<TL_account.Passkey, String> done) {
         if (!BuildVars.SUPPORTS_PASSKEYS) return;
 
@@ -290,96 +292,16 @@ public class PasskeysController {
                             final JSONObject obj = new JSONObject(res.options.data);
                             final JSONObject publicKeyObj = obj.getJSONObject("publicKey");
                             final String challenge = publicKeyObj.getString("challenge");
-
-                            if (!PushListenerController.GooglePushListenerServiceProvider.INSTANCE.hasServices()) {
-                                if (err2 instanceof NoCredentialException) {
-                                    done.run(0L, null, "EMPTY");
-                                } else if (err2 instanceof GetCredentialCancellationException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 instanceof GetCredentialInterruptedException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 != null) {
-                                    done.run(0L, null, err2.getMessage());
-                                }
-                                return;
+                            
+                            
+                            if (ENABLE_FPNV_FALLBACK) {
+                                startFirebasePhoneNumberVerification(context, currentAccount, cancelled, done, err2);
+                            } else {
+                                handleCredentialManagerError(cancelled, done, err2);
                             }
-
-                            if (!(context instanceof Activity)) {
-                                if (err2 instanceof NoCredentialException) {
-                                    done.run(0L, null, "EMPTY");
-                                } else if (err2 instanceof GetCredentialCancellationException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 instanceof GetCredentialInterruptedException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 != null) {
-                                    done.run(0L, null, err2.getMessage());
-                                }
-                                return;
-                            }
-
-                            FileLog.d("PasskeysController: Initiating FPNV fallback...");
-                            FirebasePhoneNumberVerification fpnv = FirebasePhoneNumberVerification.getInstance((Activity) context);
-                            Task<VerifiedPhoneNumberTokenResult> task = fpnv.getVerifiedPhoneNumber();
-
-                            task.addOnSuccessListener(result -> {
-                                if (cancelled[0]) return;
-                                try {
-                                    String token = result.getToken();
-                                    FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
-                                    FileLog.d("PasskeysController: FPNV success, token: " + token);
-
-                                final TL_account.finishPasskeyLogin req2 = new TL_account.finishPasskeyLogin();
-                                req2.credential = new TL_account.inputPasskeyCredentialFirebasePNV();
-                                ((TL_account.inputPasskeyCredentialFirebasePNV) req2.credential).pnv_token = token;
-
-                                final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
-                                progressDialog.showDelayed(500);
-
-                                final int requestId2 = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req2, AndroidUtilities::runOnUIThread, (auth, err3) -> {
-                                    progressDialog.dismiss();
-                                    if (err3 != null) {
-                                        done.run(0L, null, err3.text);
-                                    } else {
-                                        if (auth instanceof TLRPC.TL_auth_authorization) {
-                                            done.run(((TLRPC.TL_auth_authorization) auth).user.id, auth, null);
-                                        } else {
-                                            done.run(0L, auth, null);
-                                        }
-                                    }
-                                }, ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagInvokeAfter);
-
-                                progressDialog.setOnCancelListener(d -> {
-                                    ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId2, true);
-                                    done.run(0L, null, "CANCELLED");
-                                });
-                                } catch (Exception e) {
-                                    FileLog.e(e);
-                                    if (!cancelled[0]) done.run(0L, null, e.getMessage());
-                                }
-                            }).addOnFailureListener(e -> {
-                                if (cancelled[0]) return;
-                                FileLog.e("PasskeysController: FPNV failed", e);
-                                if (err2 instanceof NoCredentialException) {
-                                    done.run(0L, null, "EMPTY");
-                                } else if (err2 instanceof GetCredentialCancellationException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 instanceof GetCredentialInterruptedException) {
-                                    done.run(0L, null, "CANCELLED");
-                                } else if (err2 != null) {
-                                    done.run(0L, null, err2.getMessage());
-                                }
-                            });
                         } catch (Exception e) {
                             FileLog.e(e);
-                            if (err2 instanceof NoCredentialException) {
-                                done.run(0L, null, "EMPTY");
-                            } else if (err2 instanceof GetCredentialCancellationException) {
-                                done.run(0L, null, "CANCELLED");
-                            } else if (err2 instanceof GetCredentialInterruptedException) {
-                                done.run(0L, null, "CANCELLED");
-                            } else if (err2 != null) {
-                                done.run(0L, null, err2.getMessage());
-                            }
+                            handleCredentialManagerError(cancelled, done, err2);
                         }
                     }
                 });
@@ -430,5 +352,77 @@ public class PasskeysController {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    private static void startFirebasePhoneNumberVerification(Context context, int currentAccount, boolean[] cancelled, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done, GetCredentialException originalError) {
+        boolean googlePlayServicesAvailable = PushListenerController.GooglePushListenerServiceProvider.INSTANCE.hasServices();
+        // if google play services are available and context is an activity, start firebase phone number verification
+        if (!googlePlayServicesAvailable || !(context instanceof Activity)) {
+            handleCredentialManagerError(cancelled, done, originalError);
+            return;
+        }   
+        FileLog.d("PasskeysController: Initiating FPNV fallback...");
+        FirebasePhoneNumberVerification.getInstance((Activity) context)
+                .getVerifiedPhoneNumber()
+                .addOnSuccessListener(result -> {
+                    if (cancelled[0]) return;
+                    try {
+                        String token = result.getToken();
+                        FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
+                        FileLog.d("PasskeysController: FPNV success, token: " + token);
+                        sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                        if (!cancelled[0]) done.run(0L, null, e.getMessage());
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    if (cancelled[0]) return;
+                    FileLog.e("PasskeysController: FPNV failed", e);
+                    handleCredentialManagerError(cancelled, done, originalError);
+                });
+    }
+
+    private static void sendFinishPasskeyLoginRequest(Context context, int currentAccount, String token, boolean[] cancelled, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
+        final TL_account.finishPasskeyLogin req = new TL_account.finishPasskeyLogin();
+        TL_account.inputPasskeyCredentialFirebasePNV credential = new TL_account.inputPasskeyCredentialFirebasePNV();
+        credential.pnv_token = token;
+        req.credential = credential;
+
+        final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
+        progressDialog.showDelayed(500);
+
+        final int requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (auth, error) -> {
+            progressDialog.dismiss();
+            if (cancelled[0]) return;
+
+            if (error != null) {
+                done.run(0L, null, error.text);
+            } else {
+                if (auth instanceof TLRPC.TL_auth_authorization) {
+                    done.run(((TLRPC.TL_auth_authorization) auth).user.id, auth, null);
+                } else {
+                    done.run(0L, auth, null);
+                }
+            }
+        }, ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagInvokeAfter);
+
+        progressDialog.setOnCancelListener(dialog -> {
+            ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId, true);
+            done.run(0L, null, "CANCELLED");
+        });
+    }
+
+    private static void handleCredentialManagerError(boolean[] cancelled, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done, Throwable err2) {
+        if (cancelled[0]) return;
+        if (err2 instanceof NoCredentialException) {
+            done.run(0L, null, "EMPTY");
+        } else if (err2 instanceof GetCredentialCancellationException) {
+            done.run(0L, null, "CANCELLED");
+        } else if (err2 instanceof GetCredentialInterruptedException) {
+            done.run(0L, null, "CANCELLED");
+        } else if (err2 != null) {
+            done.run(0L, null, err2.getMessage());
+        }
     }
 }
