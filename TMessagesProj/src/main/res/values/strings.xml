@@ -11,6 +11,9 @@
     <string name="YourPhone">Your Phone</string>
     <string name="StartText">Please confirm your country code and enter your phone number.</string>
     <string name="StartTextPasskey">Please enter your phone number\nor **log in using passkey >**</string>
+    <string name="FpnvConsentText">You are now using secured phone number verification flow called firebase pnv an otp based authentication alternative. Do you want us to proceed with it?</string>
+    <string name="FpnvConsentTitle">Firebase Phone Number Verification</string>
+
     <string name="Country">Country</string>
     <string name="YourNumber">Your phone number</string>
     <string name="PhoneNumber">Phone number</string>
@@ -6646,8 +6649,8 @@
     <string name="SortByReactions">Reactions First</string>
     <string name="SortByReposts">Reposts First</string>
     <string name="SortByTime">Newest First</string>
-    <string name="StoryViewsSortDescription">Choose the order for the  list of viewers.</string>
-    <string name="StoryReactionsSortDescription">Choose the order for the  list of reactions.</string>
+    <string name="StoryViewsSortDescription">Choose the order for the list of viewers.</string>
+    <string name="StoryReactionsSortDescription">Choose the order for the list of reactions.</string>
     <string name="NoContactsViewed">None of your contacts viewed this story.</string>
     <string name="Viewers">Viewers</string>
     <string name="StealthModeConfirmTitle">You are in Stealth Mode now</string>

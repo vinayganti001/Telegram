@@ -360,25 +360,55 @@ public class PasskeysController {
         if (!googlePlayServicesAvailable || !(context instanceof Activity)) {
             handleCredentialManagerError(cancelled, done, originalError);
             return;
-        }   
-        FileLog.d("PasskeysController: Initiating FPNV fallback...");
-        FirebasePhoneNumberVerification.getInstance((Activity) context)
-                .getVerifiedPhoneNumber()
-                .addOnSuccessListener(result -> {
+        }
+
+        final Activity activity = (Activity) context;
+        FirebasePhoneNumberVerification.getInstance(activity)
+                .getVerificationSupportInfo()
+                .addOnSuccessListener(supportResultList -> {
                     if (cancelled[0]) return;
-                    try {
-                        String token = result.getToken();
-                        FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
-                        FileLog.d("PasskeysController: FPNV success, token: " + token);
-                        sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                        if (!cancelled[0]) done.run(0L, null, e.getMessage());
+                    boolean isSupported = supportResultList != null
+                            && supportResultList.stream()
+                            .anyMatch(VerificationSupportResult::isSupported);
+
+                    if (isSupported) {
+                        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+                        builder.setTitle(LocaleController.getString("FpnvConsentTitle", R.string.FpnvConsentTitle));
+                        builder.setMessage(LocaleController.getString("FpnvConsentText", R.string.FpnvConsentText));
+                        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialog, which) -> {
+                            FileLog.d("PasskeysController: Initiating FPNV fallback...");
+                            FirebasePhoneNumberVerification.getInstance(activity)
+                                    .getVerifiedPhoneNumber()
+                                    .addOnSuccessListener(result -> {
+                                        if (cancelled[0]) return;
+                                        try {
+                                            String token = result.getToken();
+                                            FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
+                                            FileLog.d("PasskeysController: FPNV success, token: " + token);
+                                            sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
+                                        } catch (Exception e) {
+                                            FileLog.e(e);
+                                            if (!cancelled[0]) done.run(0L, null, e.getMessage());
+                                        }
+                                    })
+                                    .addOnFailureListener(e -> {
+                                        if (cancelled[0]) return;
+                                        FileLog.e("PasskeysController: FPNV failed", e);
+                                        handleCredentialManagerError(cancelled, done, originalError);
+                                    });
+                        });
+                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), (dialog, which) -> {
+                            handleCredentialManagerError(cancelled, done, originalError);
+                        });
+                        builder.show();
+                    } else {
+                        FileLog.d("PasskeysController: FPNV not supported");
+                        handleCredentialManagerError(cancelled, done, originalError);
                     }
                 })
                 .addOnFailureListener(e -> {
                     if (cancelled[0]) return;
-                    FileLog.e("PasskeysController: FPNV failed", e);
+                    FileLog.e("PasskeysController: getVerificationInfo failed", e);
                     handleCredentialManagerError(cancelled, done, originalError);
                 });
     }
