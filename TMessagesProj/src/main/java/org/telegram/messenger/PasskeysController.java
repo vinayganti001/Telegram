@@ -42,6 +42,7 @@ import com.google.android.gms.tasks.Task;
 import com.google.firebase.pnv.FirebasePhoneNumberVerification;
 import com.google.firebase.pnv.VerificationSupportResult;
 
+import java.util.stream.Collectors;
 import java.util.Arrays;
 import java.util.concurrent.Executors;
 
@@ -171,6 +172,14 @@ public class PasskeysController {
     }
 
     public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
+        return login(context, currentAccount, clickedButton, null, done);
+    }
+
+    public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback<String> statusCallback, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
+        return login(context, currentAccount, clickedButton, statusCallback, null, done);
+    }
+
+    public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback<String> statusCallback, Utilities.Callback3<Runnable, Runnable, String> consentHandler, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
         if (!BuildVars.SUPPORTS_PASSKEYS) return null;
 
         final CredentialManager credentialManager = CredentialManager.create(context);
@@ -217,6 +226,9 @@ public class PasskeysController {
                 credentialManager.getCredentialAsync(context, request, cancellationSignal, context.getMainExecutor(), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override
                     public void onResult(GetCredentialResponse res2) {
+                        if (statusCallback != null) {
+                            AndroidUtilities.runOnUIThread(() -> statusCallback.run("VerifyingPasskeys"));
+                        }
                         final Credential credential = res2.getCredential();
                         FileLog.d("PasskeysController: onResult: CredentialManager success with credential type: " + credential.getClass().getName());
 
@@ -295,7 +307,7 @@ public class PasskeysController {
                             
                             
                             if (ENABLE_FPNV_FALLBACK) {
-                                startFirebasePhoneNumberVerification(context, currentAccount, cancelled, done, err2);
+                                startFirebasePhoneNumberVerification(context, currentAccount, cancelled, statusCallback, consentHandler, done, err2);
                             } else {
                                 handleCredentialManagerError(cancelled, done, err2);
                             }
@@ -354,12 +366,16 @@ public class PasskeysController {
         return sb.toString();
     }
 
-    private static void startFirebasePhoneNumberVerification(Context context, int currentAccount, boolean[] cancelled, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done, GetCredentialException originalError) {
+    private static void startFirebasePhoneNumberVerification(Context context, int currentAccount, boolean[] cancelled, Utilities.Callback<String> statusCallback, Utilities.Callback3<Runnable, Runnable, String> consentHandler, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done, GetCredentialException originalError) {
         boolean googlePlayServicesAvailable = PushListenerController.GooglePushListenerServiceProvider.INSTANCE.hasServices();
         // if google play services are available and context is an activity, start firebase phone number verification
         if (!googlePlayServicesAvailable || !(context instanceof Activity)) {
             handleCredentialManagerError(cancelled, done, originalError);
             return;
+        }
+
+        if (statusCallback != null) {
+            AndroidUtilities.runOnUIThread(() -> statusCallback.run("CheckingPhoneVerification"));
         }
 
         final Activity activity = (Activity) context;
@@ -372,8 +388,18 @@ public class PasskeysController {
                             .anyMatch(VerificationSupportResult::isSupported);
 
                     if (isSupported) {
-                        showConsentBottomSheet(activity, () -> {
+                        String carrierName = supportResultList.stream()
+                                .filter(VerificationSupportResult::isSupported)
+                                .map(VerificationSupportResult::getCarrierId)
+                                .filter(name -> !name.isEmpty())
+                                .distinct()
+                                .collect(Collectors.joining(" or ")); // e.g. "Verizon" or "Verizon or T-Mobile"
+
+                        Runnable onProceed = () -> {
                             FileLog.d("PasskeysController: Initiating FPNV fallback...");
+                            if (statusCallback != null) {
+                                AndroidUtilities.runOnUIThread(() -> statusCallback.run("VerifyingPhoneNumber"));
+                            }
                             FirebasePhoneNumberVerification.getInstance(activity)
                                     .getVerifiedPhoneNumber()
                                     .addOnSuccessListener(result -> {
@@ -393,10 +419,18 @@ public class PasskeysController {
                                         FileLog.e("PasskeysController: FPNV failed", e);
                                         handleCredentialManagerError(cancelled, done, originalError);
                                     });
-                        }, () -> {
+                        };
+
+                        Runnable onCancel = () -> {
                             FileLog.d("PasskeysController: User cancelled FPNV consent.");
                             handleCredentialManagerError(cancelled, done, originalError);
-                        });
+                        };
+
+                        if (consentHandler != null) {
+                            AndroidUtilities.runOnUIThread(() -> consentHandler.run(onProceed, onCancel, carrierName));
+                        } else {
+                           showConsentBottomSheet(activity, onProceed, onCancel);
+                        }
                     } else {
                         FileLog.d("PasskeysController: FPNV not supported");
                         handleCredentialManagerError(cancelled, done, originalError);
@@ -416,18 +450,24 @@ public class PasskeysController {
         container.setOrientation(android.widget.LinearLayout.VERTICAL);
         container.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(16), AndroidUtilities.dp(16), AndroidUtilities.dp(16));
 
+        org.telegram.ui.Components.RLottieImageView lottieImageView = new org.telegram.ui.Components.RLottieImageView(activity);
+        lottieImageView.setAnimation(R.raw.phone_flash_call, 100, 100);
+        lottieImageView.playAnimation();
+        lottieImageView.setAutoRepeat(true);
+        container.addView(lottieImageView, org.telegram.ui.Components.LayoutHelper.createLinear(100, 100, android.view.Gravity.CENTER_HORIZONTAL, 0, 12, 0, 16));
+
         android.widget.TextView titleView = new android.widget.TextView(activity);
         titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setTypeface(AndroidUtilities.bold());
         titleView.setText(LocaleController.getString("FpnvConsentTitle", R.string.FpnvConsentTitle));
         titleView.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_dialogTextBlack));
         titleView.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        container.addView(titleView, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 12));
+        container.addView(titleView, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8));
 
         android.widget.TextView messageView = new android.widget.TextView(activity);
-        messageView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+        messageView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 15);
         messageView.setText(LocaleController.getString("FpnvConsentText", R.string.FpnvConsentText));
-        messageView.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_dialogTextBlack));
+        messageView.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_dialogTextGray2));
         messageView.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
         container.addView(messageView, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 24));
 
@@ -438,7 +478,7 @@ public class PasskeysController {
         proceedButton.setTypeface(AndroidUtilities.bold());
         proceedButton.setText(LocaleController.getString("OK", R.string.OK));
         proceedButton.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_buttonText));
-        proceedButton.setBackground(org.telegram.ui.ActionBar.Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButton), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButtonPressed)));
+        proceedButton.setBackground(org.telegram.ui.ActionBar.Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(8), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButton), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButtonPressed)));
         proceedButton.setGravity(android.view.Gravity.CENTER);
         proceedButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
         proceedButton.setOnClickListener(v -> {
@@ -448,25 +488,8 @@ public class PasskeysController {
         });
         container.addView(proceedButton, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8));
 
-        android.widget.TextView cancelButton = new android.widget.TextView(activity);
-        cancelButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
-        cancelButton.setText(LocaleController.getString("Cancel", R.string.Cancel));
-        cancelButton.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_text_RedBold));
-        cancelButton.setBackground(org.telegram.ui.ActionBar.Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_listSelector)));
-        cancelButton.setGravity(android.view.Gravity.CENTER);
-        cancelButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
-        cancelButton.setOnClickListener(v -> {
-            userResponded[0] = true;
-            builder.getDismissRunnable().run();
-            onCancel.run();
-        });
-        container.addView(cancelButton, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT));
-
         builder.setCustomView(container);
         org.telegram.ui.ActionBar.BottomSheet sheet = builder.create();
-        sheet.setCanDismissWithSwipe(false);
-        sheet.setCanDismissWithTouchOutside(false);
-        sheet.setCancelable(false);
         sheet.setOnDismissListener(dialog -> {
             if (!userResponded[0]) {
                 FileLog.d("PasskeysController: Consent sheet dismissed without selection.");

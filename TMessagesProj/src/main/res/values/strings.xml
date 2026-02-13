@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="CheckingCredentials">Checking credentials...</string>
+    <string name="CheckingCredentials">Checking passkeys...</string>
+    <string name="VerifyingPasskeys">Verifying passkeys...</string>
+    <string name="CheckingPhoneVerification">Checking Firebase Phone Verification...</string>
+    <string name="VerifyingPhoneNumber">Verifying phone number...</string>
     <string name="AppName">Telegram</string>
     <string name="AppNameBeta">Telegram Beta</string>
     <string name="LanguageName">English</string>
@@ -13,7 +16,10 @@
     <string name="StartText">Please confirm your country code and enter your phone number.</string>
     <string name="StartTextPasskey">Please enter your phone number\nor **log in using passkey >**</string>
     <string name="FpnvConsentText">You are now using secured phone number verification flow called firebase pnv an otp based authentication alternative. Do you want us to proceed with it?</string>
+    <string name="FpnvConsentTextCarrier">A more secured way to verify your number is available for the carrier **%1$s**.\n\nTap **Verify Number** to proceed, or **Log in by phone number** if you are using a different number.</string>
     <string name="FpnvConsentTitle">Firebase Phone Number Verification</string>
+    <string name="VerifyNumber">Verify Number</string>
+    <string name="EnterNumberManually">Log in by phone number</string>
 
     <string name="Country">Country</string>
     <string name="YourNumber">Your phone number</string>

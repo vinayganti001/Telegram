@@ -23,6 +23,11 @@ public class LoginDispatcherFragment extends BaseFragment {
 
     private boolean loginStarted;
 
+    private TextView statusTextView;
+    private RLottieImageView lottieImageView;
+    private TextView verifyButton;
+    private TextView manualButton;
+
     @Override
     public View createView(Context context) {
         actionBar.setAddToContainer(false);
@@ -30,18 +35,37 @@ public class LoginDispatcherFragment extends BaseFragment {
         FrameLayout frameLayout = new FrameLayout(context);
         frameLayout.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
 
-        RLottieImageView lottieImageView = new RLottieImageView(context);
+        lottieImageView = new RLottieImageView(context);
         lottieImageView.setAnimation(R.raw.passkey, 120, 120);
         lottieImageView.playAnimation();
         lottieImageView.setAutoRepeat(true);
         frameLayout.addView(lottieImageView, LayoutHelper.createFrame(120, 120, Gravity.CENTER, 0, 0, 0, 30));
 
-        TextView textView = new TextView(context);
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
-        textView.setText(LocaleController.getString("CheckingCredentials", R.string.CheckingCredentials));
-        textView.setGravity(Gravity.CENTER);
-        frameLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 80, 0, 0));
+        statusTextView = new TextView(context);
+        statusTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        statusTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+        statusTextView.setText(LocaleController.getString("CheckingCredentials", R.string.CheckingCredentials));
+        statusTextView.setGravity(Gravity.CENTER);
+        statusTextView.setPadding(AndroidUtilities.dp(32), 0, AndroidUtilities.dp(32), 0);
+        frameLayout.addView(statusTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 80, 0, 0));
+
+        verifyButton = new TextView(context);
+        verifyButton.setText(LocaleController.getString("VerifyNumber", R.string.VerifyNumber));
+        verifyButton.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
+        verifyButton.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed)));
+        verifyButton.setGravity(Gravity.CENTER);
+        verifyButton.setTypeface(AndroidUtilities.bold());
+        verifyButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        verifyButton.setVisibility(View.GONE);
+        frameLayout.addView(verifyButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM | Gravity.LEFT, 16, 0, 16, 64));
+
+        manualButton = new TextView(context);
+        manualButton.setText(LocaleController.getString("EnterNumberManually", R.string.EnterNumberManually));
+        manualButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+        manualButton.setGravity(Gravity.CENTER);
+        manualButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        manualButton.setVisibility(View.GONE);
+        frameLayout.addView(manualButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 16, 0, 16, 24));
 
         fragmentView = frameLayout;
         return fragmentView;
@@ -63,7 +87,47 @@ public class LoginDispatcherFragment extends BaseFragment {
     }
 
     private void checkPasskeys() {
-        PasskeysController.login(getParentActivity(), currentAccount, false, (id, auth, error) -> {
+        PasskeysController.login(getParentActivity(), currentAccount, false, (status) -> {
+            if (statusTextView != null) {
+                int resId = R.string.CheckingCredentials;
+                switch (status) {
+                    case "VerifyingPasskeys":
+                        resId = R.string.VerifyingPasskeys;
+                        break;
+                    case "CheckingPhoneVerification":
+                        resId = R.string.CheckingPhoneVerification;
+                        break;
+                    case "VerifyingPhoneNumber":
+                        resId = R.string.VerifyingPhoneNumber;
+                        break;
+                }
+                statusTextView.setText(LocaleController.getString(status, resId));
+            }
+        }, (onProceed, onCancel, carrierName) -> {
+             if (lottieImageView != null) {
+                 lottieImageView.setAnimation(R.raw.phone_flash_call, 100, 100); 
+                 lottieImageView.playAnimation();
+             }
+             if (statusTextView != null) {
+                 if (carrierName != null && !carrierName.isEmpty()) {
+                     statusTextView.setText(AndroidUtilities.replaceTags(LocaleController.formatString("FpnvConsentTextCarrier", R.string.FpnvConsentTextCarrier, carrierName)));
+                 } else {
+                     statusTextView.setText(LocaleController.getString("FpnvConsentText", R.string.FpnvConsentText));
+                 }
+             }
+             if (verifyButton != null) {
+                 verifyButton.setVisibility(View.VISIBLE);
+                 verifyButton.setOnClickListener(v -> {
+                     verifyButton.setVisibility(View.GONE);
+                     manualButton.setVisibility(View.GONE);
+                     onProceed.run();
+                 });
+             }
+             if (manualButton != null) {
+                 manualButton.setVisibility(View.VISIBLE);
+                 manualButton.setOnClickListener(v -> onCancel.run());
+             }
+        }, (id, auth, error) -> {
             Bundle args = new Bundle();
             args.putBoolean("passkey_attempted", true);
 
@@ -74,10 +138,15 @@ public class LoginDispatcherFragment extends BaseFragment {
                 loginActivity = new LoginActivity(args);
             }
             loginActivity.setPriorPasskeyRequested(true);
-
-            if (id != 0 && auth != null) {
-                // Success
-                presentFragment(loginActivity.onPasskeyLoginSuccess(id, auth), true);
+            
+            if (id != 0) {
+              if (auth != null) {
+                   // Success
+                   presentFragment(loginActivity.onPasskeyLoginSuccess(id, auth), true);
+              } else {
+                   // Should technically not happen if id != 0 usually, but fallback
+                   presentFragment(loginActivity, true);
+              }
             } else {
                 // Fallback to LoginActivity
                 presentFragment(loginActivity, true);
