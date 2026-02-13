@@ -393,6 +393,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     private boolean[] postedEditDoneCallback = new boolean[2];
 
     private boolean forceDisableSafetyNet;
+    private boolean requestedPasskey = false;
+
+    public void setPriorPasskeyRequested(boolean requested) {
+        this.requestedPasskey = requested;
+    }
 
     private static class ProgressView extends View {
 
@@ -465,8 +470,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         super();
     }
 
+    public LoginActivity(Bundle args) {
+        super(args);
+    }
+
     public LoginActivity(int account) {
         super();
+        currentAccount = account;
+        newAccount = true;
+    }
+
+    public LoginActivity(int account, Bundle args) {
+        super(args);
         currentAccount = account;
         newAccount = true;
     }
@@ -528,6 +543,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public boolean onFragmentCreate() {
+        if (getArguments() != null && getArguments().getBoolean("passkey_attempted", false)) {
+            requestedPasskey = true;
+        }
         getNotificationCenter().addObserver(this, NotificationCenter.didUpdateConnectionState);
         getNotificationCenter().addObserver(this, NotificationCenter.newSuggestionsAvailable);
         return super.onFragmentCreate();
@@ -1744,6 +1762,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         TLRPC.TL_auth_authorization res = new TLRPC.TL_auth_authorization();
         res.user = UserConfig.getInstance(0).getCurrentUser();
         onAuthSuccess(res);
+    }
+
+    public LoginActivity onPasskeyLoginSuccess(long id, TLRPC.auth_Authorization auth) {
+        // Need to set currentAccount/user if not set?
+        // Actually onAuthSuccess handles it.
+        // We might need to fake a response or just call onAuthSuccess.
+        // But onAuthSuccess is private. We can make it package-private or add this wrapper.
+        // Wait, onAuthSuccess takes TL_auth_authorization.
+        if (auth instanceof TLRPC.TL_auth_authorization) {
+             onAuthSuccess((TLRPC.TL_auth_authorization) auth);
+        }
+        return this;
     }
 
     private void onAuthSuccess(TLRPC.TL_auth_authorization res) {
@@ -3512,7 +3542,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         }
 
-        private boolean requestedPasskey = false;
+
+
         private boolean requestingPasskey = false;
         private Runnable cancelRequestingPasskey;
         private void requestPasskey(boolean clickedButton) {

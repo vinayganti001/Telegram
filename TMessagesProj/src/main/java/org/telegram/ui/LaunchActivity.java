@@ -623,7 +623,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     freeAccounts -= (UserConfig.MAX_ACCOUNT_COUNT - UserConfig.MAX_ACCOUNT_DEFAULT_COUNT);
                 }
                 if (freeAccounts > 0 && availableAccount != null) {
-                    presentFragment(new LoginActivity(availableAccount));
+                    LoginDispatcherFragment fragment = new LoginDispatcherFragment();
+                    fragment.setCurrentAccount(availableAccount);
+                    fragment.setNewAccountMode(true);
+                    presentFragment(fragment);
                     drawerLayoutContainer.closeDrawer(false);
                 } else if (!UserConfig.hasPremiumOnAccounts()) {
                     if (actionBarLayout.getFragmentStack().size() > 0) {
