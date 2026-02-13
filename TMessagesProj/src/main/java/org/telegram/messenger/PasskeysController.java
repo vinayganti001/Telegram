@@ -372,10 +372,7 @@ public class PasskeysController {
                             .anyMatch(VerificationSupportResult::isSupported);
 
                     if (isSupported) {
-                        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-                        builder.setTitle(LocaleController.getString("FpnvConsentTitle", R.string.FpnvConsentTitle));
-                        builder.setMessage(LocaleController.getString("FpnvConsentText", R.string.FpnvConsentText));
-                        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialog, which) -> {
+                        showConsentBottomSheet(activity, () -> {
                             FileLog.d("PasskeysController: Initiating FPNV fallback...");
                             FirebasePhoneNumberVerification.getInstance(activity)
                                     .getVerifiedPhoneNumber()
@@ -396,11 +393,10 @@ public class PasskeysController {
                                         FileLog.e("PasskeysController: FPNV failed", e);
                                         handleCredentialManagerError(cancelled, done, originalError);
                                     });
-                        });
-                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), (dialog, which) -> {
+                        }, () -> {
+                            FileLog.d("PasskeysController: User cancelled FPNV consent.");
                             handleCredentialManagerError(cancelled, done, originalError);
                         });
-                        builder.show();
                     } else {
                         FileLog.d("PasskeysController: FPNV not supported");
                         handleCredentialManagerError(cancelled, done, originalError);
@@ -408,9 +404,77 @@ public class PasskeysController {
                 })
                 .addOnFailureListener(e -> {
                     if (cancelled[0]) return;
-                    FileLog.e("PasskeysController: getVerificationInfo failed", e);
+                    FileLog.e("PasskeysController: getVerificationSupportInfo failed", e);
                     handleCredentialManagerError(cancelled, done, originalError);
                 });
+    }
+
+    private static void showConsentBottomSheet(Activity activity, Runnable onProceed, Runnable onCancel) {
+        org.telegram.ui.ActionBar.BottomSheet.Builder builder = new org.telegram.ui.ActionBar.BottomSheet.Builder(activity);
+        
+        android.widget.LinearLayout container = new android.widget.LinearLayout(activity);
+        container.setOrientation(android.widget.LinearLayout.VERTICAL);
+        container.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(16), AndroidUtilities.dp(16), AndroidUtilities.dp(16));
+
+        android.widget.TextView titleView = new android.widget.TextView(activity);
+        titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
+        titleView.setTypeface(AndroidUtilities.bold());
+        titleView.setText(LocaleController.getString("FpnvConsentTitle", R.string.FpnvConsentTitle));
+        titleView.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_dialogTextBlack));
+        titleView.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        container.addView(titleView, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 12));
+
+        android.widget.TextView messageView = new android.widget.TextView(activity);
+        messageView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+        messageView.setText(LocaleController.getString("FpnvConsentText", R.string.FpnvConsentText));
+        messageView.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_dialogTextBlack));
+        messageView.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        container.addView(messageView, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 24));
+
+        boolean[] userResponded = new boolean[]{false};
+
+        android.widget.TextView proceedButton = new android.widget.TextView(activity);
+        proceedButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+        proceedButton.setTypeface(AndroidUtilities.bold());
+        proceedButton.setText(LocaleController.getString("OK", R.string.OK));
+        proceedButton.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_buttonText));
+        proceedButton.setBackground(org.telegram.ui.ActionBar.Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButton), org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_featuredStickers_addButtonPressed)));
+        proceedButton.setGravity(android.view.Gravity.CENTER);
+        proceedButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
+        proceedButton.setOnClickListener(v -> {
+            userResponded[0] = true;
+            builder.getDismissRunnable().run();
+            onProceed.run();
+        });
+        container.addView(proceedButton, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8));
+
+        android.widget.TextView cancelButton = new android.widget.TextView(activity);
+        cancelButton.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+        cancelButton.setText(LocaleController.getString("Cancel", R.string.Cancel));
+        cancelButton.setTextColor(org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_text_RedBold));
+        cancelButton.setBackground(org.telegram.ui.ActionBar.Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, org.telegram.ui.ActionBar.Theme.getColor(org.telegram.ui.ActionBar.Theme.key_listSelector)));
+        cancelButton.setGravity(android.view.Gravity.CENTER);
+        cancelButton.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
+        cancelButton.setOnClickListener(v -> {
+            userResponded[0] = true;
+            builder.getDismissRunnable().run();
+            onCancel.run();
+        });
+        container.addView(cancelButton, org.telegram.ui.Components.LayoutHelper.createLinear(org.telegram.ui.Components.LayoutHelper.MATCH_PARENT, org.telegram.ui.Components.LayoutHelper.WRAP_CONTENT));
+
+        builder.setCustomView(container);
+        org.telegram.ui.ActionBar.BottomSheet sheet = builder.create();
+        sheet.setCanDismissWithSwipe(false);
+        sheet.setCanDismissWithTouchOutside(false);
+        sheet.setCancelable(false);
+        sheet.setOnDismissListener(dialog -> {
+            if (!userResponded[0]) {
+                FileLog.d("PasskeysController: Consent sheet dismissed without selection.");
+                onCancel.run();
+            }
+        });
+        sheet.show();
+
     }
 
     private static void sendFinishPasskeyLoginRequest(Context context, int currentAccount, String token, boolean[] cancelled, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
