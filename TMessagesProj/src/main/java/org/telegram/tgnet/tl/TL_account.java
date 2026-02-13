@@ -4137,7 +4137,7 @@ public class TL_account {
     }
 
     public static class inputPasskeyCredentialFirebasePNV extends InputPasskeyCredential {
-        public static final int constructor = 0x34f68b32;
+        public static final int constructor = 0x5b1ccb28;
 
         public String pnv_token;
 
