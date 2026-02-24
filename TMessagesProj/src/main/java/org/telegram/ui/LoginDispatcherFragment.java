@@ -13,6 +13,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.PasskeysController;
 import org.telegram.messenger.R;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -140,7 +141,9 @@ public class LoginDispatcherFragment extends BaseFragment {
             loginActivity.setPriorPasskeyRequested(true);
             
             if (id != 0) {
-              if (auth != null) {
+              if (auth instanceof TLRPC.TL_auth_authorizationSignUpRequired) {
+                   presentFragment(loginActivity.onPasskeySignUpRequired((TLRPC.TL_auth_authorizationSignUpRequired) auth), true);
+              } else if (auth != null) {
                    // Success
                    presentFragment(loginActivity.onPasskeyLoginSuccess(id, auth), true);
               } else {

@@ -38,6 +38,7 @@ import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.DialogsActivity;
+import org.telegram.ui.DialogsActivity;
 
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.pnv.FirebasePhoneNumberVerification;
@@ -65,6 +66,7 @@ import kotlinx.coroutines.JobCancellationException;
 public class PasskeysController {
 
     private static final boolean ENABLE_FPNV_FALLBACK = true;
+    public static String tempPhone; // Hack for LoginActivity access
 
     public static void create(Context context, int currentAccount, Utilities.Callback2<TL_account.Passkey, String> done) {
         if (!BuildVars.SUPPORTS_PASSKEYS) return;
@@ -409,7 +411,7 @@ public class PasskeysController {
                                             String token = result.getToken();
                                             FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
                                             FileLog.d("PasskeysController: FPNV success, token: " + token);
-                                            // sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
+                                            tempPhone = result.getPhoneNumber();
                                             TLRPC.TL_user user = new TLRPC.TL_user();
                                             user.id = 777000L; // Dummy ID (e.g. Telegram service notification ID)
                                             user.first_name = "Test";

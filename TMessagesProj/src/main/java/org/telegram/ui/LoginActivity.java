@@ -741,6 +741,14 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         }
 
+        if (getArguments() != null && getArguments().getBoolean("fpnv_signup_required", false)) {
+             currentViewNum = VIEW_REGISTER;
+             Bundle params = new Bundle();
+             params.putString("phoneFormated", PasskeysController.tempPhone);
+             params.putString("phoneHash", "");
+             views[VIEW_REGISTER].setParams(params, false);
+        }
+
         floatingButtonContainer = new FrameLayout(context);
         floatingButtonContainer.setVisibility(doneButtonVisible[DONE_TYPE_FLOATING] ? View.VISIBLE : View.GONE);
         if (Build.VERSION.SDK_INT >= 21) {
@@ -1765,14 +1773,20 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     }
 
     public LoginActivity onPasskeyLoginSuccess(long id, TLRPC.auth_Authorization auth) {
-        // Need to set currentAccount/user if not set?
-        // Actually onAuthSuccess handles it.
-        // We might need to fake a response or just call onAuthSuccess.
-        // But onAuthSuccess is private. We can make it package-private or add this wrapper.
-        // Wait, onAuthSuccess takes TL_auth_authorization.
         if (auth instanceof TLRPC.TL_auth_authorization) {
              onAuthSuccess((TLRPC.TL_auth_authorization) auth);
         }
+        return this;
+    }
+
+    public LoginActivity onPasskeySignUpRequired(TLRPC.TL_auth_authorizationSignUpRequired auth) {
+        if (auth == null) return this;
+        Bundle args = getArguments();
+        if (args == null) {
+            args = new Bundle();
+            arguments = args;
+        }
+        args.putBoolean("fpnv_signup_required", true);
         return this;
     }
 
@@ -3610,6 +3624,10 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }else if (authObject instanceof TLRPC.TL_auth_authorizationSignUpRequired) {
                     AndroidUtilities.runOnUIThread(() -> {
                          String requestPhone = PhoneFormat.stripExceptNumbers("" + codeField.getText() + phoneField.getText());
+                         if (TextUtils.isEmpty(requestPhone) && !TextUtils.isEmpty(PasskeysController.tempPhone)) {
+                             requestPhone = PasskeysController.tempPhone;
+                         }
+                         FileLog.d("LoginActivity: Transitioning to VIEW_REGISTER with phone: " + requestPhone);
                          String requestPhoneHash = "";
                          Bundle bundle = new Bundle();
                          bundle.putString("phoneFormated", requestPhone);
@@ -7877,6 +7895,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         private TextView wrongNumber;
         private TextView privacyView;
         private TextView titleTextView;
+        private TextView phoneTextView;
         private FrameLayout editTextContainer;
         private String requestPhone;
         private String phoneHash;
@@ -8108,6 +8127,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             descriptionTextView.setLineSpacing(AndroidUtilities.dp(2), 1.0f);
             addView(descriptionTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 8, 6, 8, 0));
 
+            phoneTextView = new TextView(context);
+            phoneTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+            phoneTextView.setGravity(Gravity.CENTER_HORIZONTAL);
+            phoneTextView.setTypeface(AndroidUtilities.bold());
+            addView(phoneTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 8, 2, 8, 0));
+
+
             editTextContainer = new FrameLayout(context);
             addView(editTextContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 8, 21, 8, 0));
 
@@ -8205,6 +8231,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             avatarDrawable.invalidateSelf();
             titleTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             descriptionTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText6));
+            phoneTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             firstNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             firstNameField.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteInputFieldActivated));
             lastNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
@@ -8386,6 +8413,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             requestPhone = params.getString("phoneFormated");
             phoneHash = params.getString("phoneHash");
             currentParams = params;
+            if (phoneTextView != null) {
+                phoneTextView.setText(PhoneFormat.getInstance().format(requestPhone));
+            }
         }
 
         @Override
