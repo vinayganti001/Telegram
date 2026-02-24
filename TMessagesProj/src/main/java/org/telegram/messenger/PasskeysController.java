@@ -37,6 +37,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.LaunchActivity;
+import org.telegram.ui.DialogsActivity;
 
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.pnv.FirebasePhoneNumberVerification;
@@ -408,7 +409,24 @@ public class PasskeysController {
                                             String token = result.getToken();
                                             FileLog.d("PasskeysController: FPNV result phone number: " + result.getPhoneNumber());
                                             FileLog.d("PasskeysController: FPNV success, token: " + token);
-                                            sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
+                                            // sendFinishPasskeyLoginRequest(context, currentAccount, token, cancelled, done);
+                                            TLRPC.TL_user user = new TLRPC.TL_user();
+                                            user.id = 777000L; // Dummy ID (e.g. Telegram service notification ID)
+                                            user.first_name = "Test";
+                                            user.last_name = "Mode";
+                                            user.phone = result.getPhoneNumber();
+                                            user.self = true;
+
+                                            TLRPC.TL_auth_authorizationSignUpRequired auth = new TLRPC.TL_auth_authorizationSignUpRequired();
+                                            auth.terms_of_service = null; // or create dummy terms if needed
+
+                                            AndroidUtilities.runOnUIThread(() -> {
+                                                MessagesController.getInstance(currentAccount).dialogsLoaded = true;
+                                                DialogsActivity.dialogsLoaded[currentAccount] = true;
+                                                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.dialogsNeedReload);
+                                                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_ALL);
+                                                done.run(user.id, auth, null);
+                                            });
                                         } catch (Exception e) {
                                             FileLog.e(e);
                                             if (!cancelled[0]) done.run(0L, null, e.getMessage());

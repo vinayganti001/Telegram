@@ -3607,6 +3607,16 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }
                 if (authObject instanceof TLRPC.TL_auth_authorization) {
                     onAuthSuccess((TLRPC.TL_auth_authorization) authObject);
+                }else if (authObject instanceof TLRPC.TL_auth_authorizationSignUpRequired) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                         String requestPhone = PhoneFormat.stripExceptNumbers("" + codeField.getText() + phoneField.getText());
+                         String requestPhoneHash = "";
+                         Bundle bundle = new Bundle();
+                         bundle.putString("phoneFormated", requestPhone);
+                         bundle.putString("phoneHash", requestPhoneHash);
+                         bundle.putString("code", codeField.getText().toString());
+                         setPage(VIEW_REGISTER, true, bundle, false);
+                    });
                 }
             });
         }
