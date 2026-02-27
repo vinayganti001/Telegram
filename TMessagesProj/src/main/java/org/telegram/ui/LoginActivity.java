@@ -221,6 +221,21 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     public final static boolean ENABLE_PASTED_TEXT_PROCESSING = false;
     private final static int SHOW_DELAY = SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_AVERAGE ? 150 : 100;
 
+    private Activity tempParentActivity;
+
+    public void setTempParentActivity(Activity activity) {
+        this.tempParentActivity = activity;
+    }
+
+    @Override
+    public Activity getParentActivity() {
+        Activity parent = super.getParentActivity();
+        if (parent == null) {
+            return tempParentActivity;
+        }
+        return parent;
+    }
+
     public static final boolean TEST_BACKEND_IN_STORE = false;
 
     public final static int AUTH_TYPE_MESSAGE = 1,
@@ -1755,6 +1770,19 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         } else if (getParentActivity() instanceof ExternalActionActivity) {
             ((ExternalActionActivity) getParentActivity()).onFinishLogin();
+        } else {
+            try {
+                Intent intent = new Intent(getParentActivity(), LaunchActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                intent.putExtra("fromLogin", true);
+                if (afterSignup) {
+                    intent.putExtra("afterSignup", true);
+                }
+                getParentActivity().startActivity(intent);
+                getParentActivity().finish();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
         }
     }
 

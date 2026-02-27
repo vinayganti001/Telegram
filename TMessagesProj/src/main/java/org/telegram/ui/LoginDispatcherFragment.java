@@ -142,7 +142,9 @@ public class LoginDispatcherFragment extends BaseFragment {
             if (id != 0) {
               if (auth != null) {
                    // Success
-                   presentFragment(loginActivity.onPasskeyLoginSuccess(id, auth), true);
+                   loginActivity.setTempParentActivity(getParentActivity());
+                   loginActivity.setParentLayout(getParentLayout());
+                   loginActivity.onPasskeyLoginSuccess(id, auth);
               } else {
                    // Should technically not happen if id != 0 usually, but fallback
                    presentFragment(loginActivity, true);
